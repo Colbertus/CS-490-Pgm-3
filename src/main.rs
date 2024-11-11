@@ -17,8 +17,7 @@ use std::sync::{Arc, Mutex};
 struct Process {
     id: i32,
     priority: i32,
-    sleep_time: i32,
-    description: String,
+    sleep_time: u64,
 }
 
 impl Ord for Process {
@@ -81,7 +80,7 @@ fn main() {
         .read_line(&mut sleep_time)
         .expect("Failed to read input");
 
-    let sleep_time: i32 = match sleep_time.trim().parse() {
+    let sleep_time: u64 = match sleep_time.trim().parse() {
         Ok(num) => num,
         Err(_) => {
             println!("Please enter a valid number!");
@@ -107,20 +106,21 @@ fn main() {
 
     println!("Starting the Simulation...");
 
-    let mut binary_heap: Arc::new(Mutex::new(BinaryHeap::new()));
-
+    let binary_heap = Arc::new(Mutex::new(BinaryHeap::new()));
+    let producer_heap = Arc::clone(&binary_heap);
     let producer = thread::spawn(move || {
-        let producer_heap = Arc::clone(&binary_heap);
+
+        let mut process_id = 0;
 
         print!("...producer is starting its work...");
-        for i in 0..phases {
+        for _ in 0..phases {
 
-            for j in 0..num_processes {
+            for _ in 0..num_processes {
+                process_id += 1;
                 let process = Process {
-                    id: j,
+                    id: process_id,
                     priority: rand::thread_rng().gen_range(0..100),
-                    sleep_time: rand::thread_rng().gen_range(200..2000),
-                    description: format!("Process Node {}", j),
+                    sleep_time: rand::thread_rng().gen_range(200..2000)
                 };
                 let mut heap = producer_heap.lock().unwrap();
                 heap.push(process);
@@ -129,50 +129,65 @@ fn main() {
             println!("...producer is now sleeping...");
             thread::sleep(std::time::Duration::from_millis(sleep_time));
         }
+        println!("...producer has finished with a total of {} processes generated...", process_id);
     });
 
-    thread::sleep(std::time::Duration::from_millis(100));
+    thread::sleep(std::time::Duration::from_millis(500));
+
+    let consumer_heap1 = Arc::clone(&binary_heap);
 
     let consumer1 = thread::spawn(move || {
-        let consumer_heap = Arc::clone(&binary_heap);
+        
+        let mut num_processes = 0;
         loop {
-            let mut heap = consumer_heap.lock().unwrap();
+            let mut heap = consumer_heap1.lock().unwrap();
             let process = heap.pop();
-            thread::sleep(std::time::Duration::from_millis(p.sleep_time));
+            if let Some(process_ref) = process.as_ref() {
+                drop(heap);
+                num_processes += 1;
+                thread::sleep(std::time::Duration::from_millis(process_ref.sleep_time));
+            }
             match process {
                 Some(p) => {
                     println!("Consumer 1: Process Node {} with priority {} has been executed for {} ms", p.id, p.priority, p.sleep_time);
                 },
                 None => {
-                    println!("Consumer 1: No more processes to consume");
                     break;
                 }
             }
         }
+        println!("Consumer 1 has finished processing and has executed {} processes", num_processes);
     });
 
+    let consumer_heap2 = Arc::clone(&binary_heap);
+
     let consumer2 = thread::spawn(move || {
-        let consumer_heap = Arc::clone(&binary_heap);
+        
+        let mut num_processes = 0;
         loop {
-            let mut heap = consumer_heap.lock().unwrap();
+            let mut heap = consumer_heap2.lock().unwrap();
             let process = heap.pop();
-            thread::sleep(std::time::Duration::from_millis(p.sleep_time));
+            if let Some(process_ref) = process.as_ref() {
+                drop(heap);
+                num_processes += 1;
+                thread::sleep(std::time::Duration::from_millis(process_ref.sleep_time));
+            }
             match process {
                 Some(p) => {
                     println!("Consumer 2: Process Node {} with priority {} has been executed for {} ms", p.id, p.priority, p.sleep_time);
                 },
                 None => {
-                    println!("Consumer 2: No more processes to consume");
                     break;
                 }
             }
         }
+        println!("Consumer 2 has finished processing and has executed {} processes", num_processes);
     });
 
     producer.join().unwrap();
     consumer1.join().unwrap();
     consumer2.join().unwrap();
 
-    println!("Simulation complete!");
+    println!("Both consumers have finished their work. Simulation complete!");
 
 }
